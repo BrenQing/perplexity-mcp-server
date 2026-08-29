@@ -1,0 +1,46 @@
+{
+  "name": "perplexity-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server that connects Perplexity's Sonar API to Claude, giving Claude live, citation-backed web search and research.",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "perplexity-mcp-server": "dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "clean": "rm -rf dist",
+    "prepare": "npm run build",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "perplexity",
+    "sonar",
+    "claude",
+    "search"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "optionalDependencies": {
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

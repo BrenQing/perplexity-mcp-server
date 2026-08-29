@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "perplexity": {
+      "command": "node",
+      "args": ["/absolute/path/to/expert-spork/dist/index.js"],
+      "env": {
+        "PERPLEXITY_API_KEY": "pplx-your-key-here"
+      }
+    }
+  }
+}

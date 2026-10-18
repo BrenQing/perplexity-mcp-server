@@ -46,6 +46,8 @@ The server is configured entirely through environment variables:
 | `PERPLEXITY_API_KEY` | ✅ | — | Your Perplexity API key. |
 | `TRANSPORT` | | `stdio` | `stdio` for local clients, `http` for a remote server. |
 | `PORT` | | `3000` | Port for the HTTP transport (only used when `TRANSPORT=http`). |
+| `HOST` | | `127.0.0.1` | Bind address for the HTTP transport. Loopback by default; change it only when you intend to expose the server. |
+| `MCP_AUTH_TOKEN` | | — | HTTP transport only. When set, every `POST /mcp` must send `Authorization: Bearer <token>`. |
 
 Copy `.env.example` to `.env` for local reference (the server reads real
 environment variables — your MCP client is what sets them, see below).
@@ -114,11 +116,19 @@ To serve over streamable HTTP (e.g. for a shared/remote deployment):
 
 ```bash
 TRANSPORT=http PORT=3000 PERPLEXITY_API_KEY=pplx-your-key-here node dist/index.js
-# -> perplexity-mcp-server v1.0.0 running on http://localhost:3000/mcp
+# -> perplexity-mcp-server v1.0.0 running on http://127.0.0.1:3000/mcp
 ```
 
-- MCP endpoint: `POST http://localhost:3000/mcp`
-- Health check: `GET http://localhost:3000/health`
+- MCP endpoint: `POST http://127.0.0.1:3000/mcp`
+- Health check: `GET http://127.0.0.1:3000/health`
+
+> **Security.** The `/mcp` endpoint dispatches tools that spend your Perplexity
+> API key. The server binds to **loopback (`127.0.0.1`) by default**, so it is not
+> reachable from the network unless you set `HOST`. Before exposing it beyond
+> loopback, set `MCP_AUTH_TOKEN` (callers must then send
+> `Authorization: Bearer <token>`) and/or put it behind an authenticated reverse
+> proxy. The server prints a warning if it starts on a non-loopback host with no
+> token set.
 
 ## Verify
 

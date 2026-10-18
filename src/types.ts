@@ -59,4 +59,8 @@ export interface NormalizedAnswer {
   citations: PerplexitySearchResult[];
   related_questions: string[];
   usage?: PerplexityUsage;
+  /** True when the payload was trimmed to fit the response size budget. */
+  truncated?: boolean;
+  /** Human-readable explanation of what was trimmed, present only when truncated. */
+  truncation_note?: string;
 }

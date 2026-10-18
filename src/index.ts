@@ -58,11 +58,36 @@ async function runHttp(): Promise<void> {
   const app = express();
   app.use(express.json());
 
+  // Optional shared-secret auth. When MCP_AUTH_TOKEN is set, every /mcp request
+  // must present `Authorization: Bearer <token>`. The /mcp endpoint dispatches
+  // tools that spend the owner's Perplexity key, so it must not be reachable by
+  // anyone who can hit the port.
+  const authToken = process.env.MCP_AUTH_TOKEN;
+
+  // Bind to loopback by default so the server is not exposed on the network
+  // unless the operator deliberately opts in via HOST. Public exposure should
+  // go through an authenticated reverse proxy and/or MCP_AUTH_TOKEN.
+  const host = process.env.HOST || "127.0.0.1";
+  const isLoopback = host === "127.0.0.1" || host === "::1" || host === "localhost";
+
   app.get("/health", (_req, res) => {
     res.json({ status: "ok", server: SERVER_NAME, version: SERVER_VERSION });
   });
 
   app.post("/mcp", async (req, res) => {
+    if (authToken) {
+      const header = req.header("authorization") || "";
+      const presented = header.startsWith("Bearer ") ? header.slice(7) : "";
+      if (presented !== authToken) {
+        res.status(401).json({
+          jsonrpc: "2.0",
+          error: { code: -32001, message: "Unauthorized: missing or invalid bearer token" },
+          id: null,
+        });
+        return;
+      }
+    }
+
     // Fresh server + transport per request keeps the HTTP transport stateless.
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({
@@ -78,10 +103,23 @@ async function runHttp(): Promise<void> {
   });
 
   const port = parseInt(process.env.PORT || "3000", 10);
-  app.listen(port, () => {
+  app.listen(port, host, () => {
     console.error(
-      `${SERVER_NAME} v${SERVER_VERSION} running on http://localhost:${port}/mcp`,
+      `${SERVER_NAME} v${SERVER_VERSION} running on http://${host}:${port}/mcp`,
     );
+    if (!authToken) {
+      if (isLoopback) {
+        console.error(
+          "Note: no MCP_AUTH_TOKEN set — /mcp is unauthenticated but bound to loopback only.",
+        );
+      } else {
+        console.error(
+          `WARNING: bound to ${host} (non-loopback) with no MCP_AUTH_TOKEN. The /mcp ` +
+            "endpoint spends your Perplexity API key and is reachable by anyone who can " +
+            "reach this port. Set MCP_AUTH_TOKEN and/or front it with an authenticated proxy.",
+        );
+      }
+    }
   });
 }
 

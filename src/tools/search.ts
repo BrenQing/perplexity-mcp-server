@@ -9,9 +9,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { CHARACTER_LIMIT, SONAR_MODELS } from "../constants.js";
+import { SONAR_MODELS } from "../constants.js";
 import {
   PerplexityApiError,
+  boundAnswer,
   callPerplexity,
   normalizeResponse,
   renderMarkdown,
@@ -57,23 +58,20 @@ async function runQuery(
 
   try {
     const raw = await callPerplexity(request);
-    const normalized = normalizeResponse(raw);
+    // Bound the payload once as data, then render both the text and the
+    // structured content from the same bounded object. This keeps JSON output
+    // valid (no mid-document slicing) and applies the size limit to
+    // structuredContent too, which clients may consume instead of the text.
+    const bounded = boundAnswer(normalizeResponse(raw));
 
-    let text =
+    const text =
       options.response_format === ResponseFormat.JSON
-        ? JSON.stringify(normalized, null, 2)
-        : renderMarkdown(normalized);
-
-    if (text.length > CHARACTER_LIMIT) {
-      text =
-        text.slice(0, CHARACTER_LIMIT) +
-        `\n\n_[Response truncated at ${CHARACTER_LIMIT} characters. ` +
-        "Ask a more specific question or set max_tokens to reduce length.]_";
-    }
+        ? JSON.stringify(bounded, null, 2)
+        : renderMarkdown(bounded);
 
     return {
       content: [{ type: "text" as const, text }],
-      structuredContent: normalized as unknown as Record<string, unknown>,
+      structuredContent: bounded as unknown as Record<string, unknown>,
     };
   } catch (error) {
     const message =

@@ -7,6 +7,7 @@
  */
 
 import {
+  CHARACTER_LIMIT,
   PERPLEXITY_API_BASE_URL,
   REQUEST_TIMEOUT_MS,
 } from "../constants.js";
@@ -55,9 +56,8 @@ export async function callPerplexity(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-  let response: Response;
   try {
-    response = await fetch(`${PERPLEXITY_API_BASE_URL}/chat/completions`, {
+    const response = await fetch(`${PERPLEXITY_API_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -67,10 +67,30 @@ export async function callPerplexity(
       body: JSON.stringify(body),
       signal: controller.signal,
     });
+
+    // `fetch` resolves once headers arrive, so the body reads below must stay
+    // inside the timed region: a server that sends headers then stalls the body
+    // would otherwise hang past the deadline. The timer is cleared only in the
+    // finally, after the body has been fully read (or the attempt has thrown).
+    if (!response.ok) {
+      const detail = await safeReadError(response);
+      throw new PerplexityApiError(
+        mapStatusToMessage(response.status, detail),
+        response.status,
+      );
+    }
+
+    return (await response.json()) as PerplexityChatResponse;
   } catch (error) {
+    // Preserve HTTP-status errors raised above rather than masking them.
+    if (error instanceof PerplexityApiError) {
+      throw error;
+    }
+    // An abort during either the header wait or a stalled body read surfaces as
+    // AbortError; report both as a timeout.
     if (error instanceof Error && error.name === "AbortError") {
       throw new PerplexityApiError(
-        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s. ` +
+        `Request timed out after ${REQUEST_TIMEOUT_MS / 1000}s (including response body). ` +
           "Try a lighter model (e.g. 'sonar') or a narrower query.",
       );
     }
@@ -82,13 +102,6 @@ export async function callPerplexity(
   } finally {
     clearTimeout(timeout);
   }
-
-  if (!response.ok) {
-    const detail = await safeReadError(response);
-    throw new PerplexityApiError(mapStatusToMessage(response.status, detail), response.status);
-  }
-
-  return (await response.json()) as PerplexityChatResponse;
 }
 
 /** Turn an HTTP status into an actionable error message. */
@@ -190,5 +203,74 @@ export function renderMarkdown(result: NormalizedAnswer): string {
     }
   }
 
+  if (result.truncation_note) {
+    lines.push("", `_${result.truncation_note}_`);
+  }
+
   return lines.join("\n");
+}
+
+/**
+ * Bound a {@link NormalizedAnswer} so its serialized form stays within `limit`
+ * characters, trimming as data (not by slicing the rendered string) so both the
+ * JSON and Markdown renderings remain valid. The answer text is capped first,
+ * then citations are kept only while the whole payload fits; what was dropped is
+ * recorded in `truncated` / `truncation_note`.
+ */
+export function boundAnswer(
+  result: NormalizedAnswer,
+  limit = CHARACTER_LIMIT,
+): NormalizedAnswer {
+  // Fast path: already within budget in both renderings.
+  if (
+    JSON.stringify(result, null, 2).length <= limit &&
+    renderMarkdown(result).length <= limit
+  ) {
+    return result;
+  }
+
+  // Cap the answer to roughly half the budget; reserve the rest for sources,
+  // related questions, structure and the truncation note.
+  const answerBudget = Math.max(500, Math.floor(limit * 0.5));
+  let answer = result.answer;
+  if (answer.length > answerBudget) {
+    answer =
+      answer.slice(0, answerBudget).trimEnd() +
+      "\n\n[… answer truncated to fit the response size limit …]";
+  }
+
+  // Keep citations from the front while the serialized payload stays under the
+  // limit, leaving headroom for the truncation note added below.
+  const noteReserve = 400;
+  const keptCitations: PerplexitySearchResult[] = [];
+  for (const citation of result.citations) {
+    const candidate: NormalizedAnswer = {
+      ...result,
+      answer,
+      citations: [...keptCitations, citation],
+      truncated: true,
+    };
+    if (JSON.stringify(candidate, null, 2).length > limit - noteReserve) break;
+    keptCitations.push(citation);
+  }
+
+  const droppedCitations = result.citations.length - keptCitations.length;
+  const answerCapped = answer !== result.answer;
+  const parts: string[] = [];
+  if (answerCapped) parts.push("the answer was capped");
+  if (droppedCitations > 0) {
+    parts.push(
+      `${droppedCitations} of ${result.citations.length} sources were dropped`,
+    );
+  }
+
+  return {
+    ...result,
+    answer,
+    citations: keptCitations,
+    truncated: true,
+    truncation_note:
+      `Response exceeded the ${limit}-character budget: ${parts.join(" and ")}. ` +
+      "Narrow the query or set max_tokens to get the full result.",
+  };
 }

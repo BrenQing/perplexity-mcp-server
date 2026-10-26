@@ -174,4 +174,4 @@ src/
 
 ## License
 
-MIT
+MIT © 2026 BF OPS. See [LICENSE](LICENSE).

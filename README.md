@@ -61,7 +61,7 @@ From this project directory, register the server (adjust the path if you run it 
 ```bash
 claude mcp add perplexity \
   --env PERPLEXITY_API_KEY=pplx-your-key-here \
-  -- node /absolute/path/to/expert-spork/dist/index.js
+  -- node /absolute/path/to/perplexity-mcp-server/dist/index.js
 ```
 
 Then start Claude Code and ask it to search the web — it will call the Perplexity tools.
@@ -78,7 +78,7 @@ Windows: `%APPDATA%\Claude\claude_desktop_config.json`) and add:
   "mcpServers": {
     "perplexity": {
       "command": "node",
-      "args": ["/absolute/path/to/expert-spork/dist/index.js"],
+      "args": ["/absolute/path/to/perplexity-mcp-server/dist/index.js"],
       "env": {
         "PERPLEXITY_API_KEY": "pplx-your-key-here"
       }
